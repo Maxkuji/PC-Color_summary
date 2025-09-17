@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import "./App.css";
 
 const API_URL = "http://localhost:8000/summarize"; // dev
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+const PALETTE_SIZES = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
 
 export default function App() {
   const [file, setFile] = useState(null);
@@ -8,13 +18,49 @@ export default function App() {
   const [maxSide, setMaxSide] = useState(512);
   const [loading, setLoading] = useState(false);
   const [palette, setPalette] = useState([]);
-  const imgRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const fileInputRef = useRef(null);
 
   const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
-  const onSummarize = async () => {
-    if (!file) return alert("เลือกภาพก่อนนะ bro");
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const handleFileChange = (nextFile) => {
+    if (nextFile && nextFile.size > MAX_FILE_SIZE) {
+      alert("Please choose an image under 15 MB.");
+      return;
+    }
+    setFile(nextFile || null);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const droppedFile = event.dataTransfer?.files?.[0];
+    if (droppedFile) {
+      handleFileChange(droppedFile);
+    }
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleSummarize = async () => {
+    if (!file) {
+      alert("Please select an image first.");
+      return;
+    }
 
     const safeK = Math.min(12, Math.max(3, Number(k) || 6));
     const safeMaxSide = Math.min(2048, Math.max(128, Number(maxSide) || 512));
@@ -33,118 +79,222 @@ export default function App() {
       }
       const data = await res.json();
       setPalette(data.palette || []);
-    } catch (e) {
-      console.error(e);
-      alert("เรียก API ไม่สำเร็จ: " + e.message);
+    } catch (error) {
+      console.error(error);
+      alert("We hit a problem while talking to the API. Please try again. " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    handleSummarize();
+  };
+
   const downloadJSON = () => {
     const blob = new Blob([JSON.stringify(palette, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "palette.json";
-    a.click();
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = "palette.json";
+    anchor.click();
   };
 
   const downloadCSS = () => {
-    const vars = ":root{\n" + palette.map((c,i)=>`  --color-${i+1}: ${c.hex};`).join("\n") + "\n}";
+    const vars = [":root {", ...palette.map((color, index) => `  --color-${index + 1}: ${color.hex};`), "}", ""].join("\n");
     const blob = new Blob([vars], { type: "text/css" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "palette.css";
-    a.click();
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = "palette.css";
+    anchor.click();
   };
 
+  const hasPalette = palette.length > 0;
+
   return (
-    <div style={{maxWidth: 1000, margin: "24px auto", fontFamily: "system-ui"}}>
-      <h1>🎨 Image Color Summarizer</h1>
-
-      <div style={{display:"flex", gap:16, flexWrap:"wrap", alignItems:"flex-start"}}>
-        <div style={{flex:"1 1 320px"}}>
-          <input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] || null)} />
-
-          <div style={{marginTop:8, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap"}}>
-            <label>จำนวนสี:
-              <select value={k} onChange={e => setK(Number(e.target.value))} style={{marginLeft:6}}>
-              {[3,4,5,6,7,8,9,10,11,12].map(n => (<option key={n} value={n}>{n}</option>))}</select>
-            </label>
-            <label>ย่อด้านยาว(px):
-              <input type="number" min="128" max="2048" step="64" value={maxSide} onChange={e=>setMaxSide(e.target.value)} style={{width:80, marginLeft:6}}/>
-            </label>
-            <button onClick={onSummarize} disabled={loading} aria-busy={loading} style={{padding:"8px 12px"}}>
-              {loading ? "กำลังคำนวณ..." : "Summarize"}
-            </button>
-            <button onClick={downloadJSON} disabled={!palette.length}>⬇ JSON</button>
-            <button onClick={downloadCSS} disabled={!palette.length}>⬇ CSS</button>
-          </div>
-
-          {/* Dropzone (optional) */}
-          <div
-            onDragOver={e=>e.preventDefault()}
-            onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files?.[0]; if (f) setFile(f); }}
-            style={{marginTop:12, padding:24, border:'2px dashed #ddd', borderRadius:12, textAlign:'center'}}
+    <div className="app">
+      <header className="hero">
+        <span className="hero__tag">Color summarizer</span>
+        <h1>Design better palettes from any image</h1>
+        <p>
+          Upload a photo to extract up to twelve dominant colors. Adjust the palette size and resolution,
+          then export production-ready variables for your next project.
+        </p>
+        <div className="hero__cta">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
           >
-            ลากรูปมาวางที่นี่ หรือกดเลือกไฟล์ด้านบน
-          </div>
-
-          {previewUrl && (
-            <img ref={imgRef} src={previewUrl} alt="preview" style={{marginTop:12, maxWidth:"100%", border:"1px solid #eee", borderRadius:12}}/>
-          )}
+            {file ? "Replace image" : "Choose image"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={handleSummarize}
+            disabled={loading || !file}
+          >
+            {loading ? "Analyzing..." : "Generate palette"}
+          </button>
         </div>
+      </header>
 
-        <div style={{flex:"1 1 320px"}}>
-          <h3>พาเลตสี</h3>
-          <div style={{display:"flex", gap:12, flexWrap:"wrap"}}>
-            {palette.map((c,i)=>(
-              <div key={i} style={{width:160, border:"1px solid #eee", borderRadius:12, overflow:"hidden"}}>
-                <div style={{height:70, background:c.hex}} />
-                <div style={{padding:10, fontSize:13}}>
-                  <div>
-                    <b
-                      onClick={() => navigator.clipboard.writeText(c.hex)}
-                      style={{cursor:'pointer'}}
-                      title="Click to copy HEX"
-                    >
-                      {c.hex}
-                    </b>
+      <main className="layout">
+        <section className="panel panel--input">
+          <h2>Artwork setup</h2>
+          <p className="panel__description">
+            Drag in a file or browse from your device. PNG and JPEG files up to 15 MB are supported.
+          </p>
+
+          <form className="form" onSubmit={handleSubmit}>
+            <div className="field">
+              <span className="field__label">Image source</span>
+              <label
+                htmlFor="file-input"
+                className={`dropzone${isDragging ? " dropzone--active" : ""}${file ? " dropzone--has-file" : ""}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <input
+                  id="file-input"
+                  ref={fileInputRef}
+                  className="dropzone__input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => handleFileChange(event.target.files?.[0] || null)}
+                />
+
+                {file && previewUrl ? (
+                  <div className="dropzone__preview">
+                    <img src={previewUrl} alt="Selected preview" className="dropzone__image" />
+                    <div className="dropzone__details">
+                      <span className="dropzone__filename" title={file.name}>
+                        {file.name}
+                      </span>
+                      <span className="dropzone__meta">{formatFileSize(file.size)}</span>
+                    </div>
                   </div>
-                  <div>RGB: {c.rgb.join(", ")}</div>
-                  <div>{Number(c.percent).toFixed(2)}%</div>
-                </div>
+                ) : (
+                  <div className="dropzone__placeholder">
+                    <strong>Drop your image here</strong>
+                    <span>or click to browse</span>
+                    <small>PNG or JPEG - under 15 MB</small>
+                  </div>
+                )}
+              </label>
+            </div>
+
+            <div className="field">
+              <span className="field__label">Palette settings</span>
+              <div className="field__grid">
+                <label className="control">
+                  <span className="control__label">Colors</span>
+                  <select
+                    className="control__input"
+                    value={k}
+                    onChange={(event) => setK(Number(event.target.value))}
+                  >
+                    {PALETTE_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="control">
+                  <span className="control__label">Max side (px)</span>
+                  <input
+                    className="control__input"
+                    type="number"
+                    min="128"
+                    max="2048"
+                    step="64"
+                    value={maxSide}
+                    onChange={(event) => setMaxSide(Number(event.target.value))}
+                  />
+                </label>
               </div>
-            ))}
+            </div>
+
+            <div className="form__actions">
+              <button className="btn btn--primary" type="submit" disabled={loading}>
+                {loading ? "Analyzing..." : "Run summarizer"}
+              </button>
+              <button className="btn btn--secondary" type="button" onClick={downloadJSON} disabled={!hasPalette}>
+                Export JSON
+              </button>
+              <button className="btn btn--secondary" type="button" onClick={downloadCSS} disabled={!hasPalette}>
+                Export CSS vars
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="panel panel--output">
+          <div className="panel__heading">
+            <h2>Palette preview</h2>
+            {hasPalette && <span className="panel__badge">{palette.length} colors</span>}
           </div>
 
-          {!!palette.length && (
+          {hasPalette ? (
             <>
-              <h3>ตาราง</h3>
-              <table style={{width:"100%", borderCollapse:"collapse"}}>
-                <thead>
-                  <tr style={{borderBottom:'1px solid #eee'}}>
-                    <th style={{textAlign:"left"}}>#</th>
-                    <th style={{textAlign:"left"}}>HEX</th>
-                    <th style={{textAlign:"left"}}>RGB</th>
-                    <th style={{textAlign:"left"}}>%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {palette.map((c,i)=>(
-                    <tr key={i} style={{borderBottom:'1px solid #f3f3f3'}}>
-                      <td>{i+1}</td>
-                      <td>{c.hex}</td>
-                      <td>{c.rgb.join(", ")}</td>
-                      <td>{Number(c.percent).toFixed(2)}</td>
+              <div className="palette-grid">
+                {palette.map((color, index) => (
+                  <article className="color-card" key={`${color.hex}-${index}`}>
+                    <div className="color-card__swatch" style={{ backgroundColor: color.hex }} />
+                    <div className="color-card__body">
+                      <button
+                        type="button"
+                        className="color-card__hex"
+                        onClick={() => navigator.clipboard?.writeText(color.hex)}
+                        title="Copy HEX to clipboard"
+                      >
+                        {color.hex}
+                      </button>
+                      <span className="color-card__meta">RGB {color.rgb.join(", ")}</span>
+                      <span className="color-card__percent">{Number(color.percent || 0).toFixed(2)}%</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">HEX</th>
+                      <th scope="col">RGB</th>
+                      <th scope="col">Usage %</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {palette.map((color, index) => (
+                      <tr key={`${color.hex}-${index}-row`}>
+                        <td>{index + 1}</td>
+                        <td>{color.hex}</td>
+                        <td>{color.rgb.join(", ")}</td>
+                        <td>{Number(color.percent || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
+          ) : (
+            <div className="empty-state">
+              <h3>Waiting for your image</h3>
+              <p>
+                Once you upload an image we will surface the dominant colors, usage percentages, and export-ready assets
+                right here.
+              </p>
+            </div>
           )}
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
+
