@@ -113,36 +113,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="hero">
-        <span className="hero__tag">Color summarizer</span>
-        <h1>Design better palettes from any image</h1>
-        <p>
-          Upload a photo to extract up to twelve dominant colors. Adjust the palette size and resolution,
-          then export production-ready variables for your next project.
-        </p>
-        <div className="hero__cta">
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading}
-          >
-            {file ? "Replace image" : "Choose image"}
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={handleSummarize}
-            disabled={loading || !file}
-          >
-            {loading ? "Analyzing..." : "Generate palette"}
-          </button>
-        </div>
-      </header>
-
       <main className="layout">
         <section className="panel panel--input">
-          <h2>Artwork setup</h2>
+          <h1 className="panel__title">Artwork setup</h1>
           <p className="panel__description">
             Drag in a file or browse from your device. PNG and JPEG files up to 15 MB are supported.
           </p>
@@ -220,7 +193,7 @@ export default function App() {
 
             <div className="form__actions">
               <button className="btn btn--primary" type="submit" disabled={loading}>
-                {loading ? "Analyzing..." : "Run summarizer"}
+                {loading ? "Analyzing..." : "Generate palette"}
               </button>
               <button className="btn btn--secondary" type="button" onClick={downloadJSON} disabled={!hasPalette}>
                 Export JSON
@@ -297,4 +270,3 @@ export default function App() {
     </div>
   );
 }
-
